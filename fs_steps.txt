@@ -1,0 +1,432 @@
+
+
+
+
+2)========================= create file df ==============
+
+cd dba
+mkdir monitor
+cd monitor
+
+--------------------- LINUX -----------
+echo '#/bin/bash
+
+/bin/df -Pl' > run_df.sh
+
+--------------------- SOLARIS -----------
+echo '#/bin/bash
+
+/bin/df -h' > run_df.sh
+
+--------------------- AIX -----------
+echo '#/bin/bash
+
+/bin/df -Pk' > run_df.sh
+
+--------------------- HP-UX -----------
+echo '#/bin/bash
+
+/bin/bdf' > run_df.sh
+
+===================== NOTE =========
+in linux if you get error as  "/bin/df: `/root/.gvfs':
+use below script
+--------------------------
+echo '#/bin/bash
+/bin/df -Pl -x fuse.gvfs-fuse-daemon' > run_df.sh
+--------------------------
+
+2.1)========================= create file lsnrctl ==============
+
+password =>  Ex3mp!4r7prd
+--------------------- LINUX -----------
+
+scp -r oracle@dx1411:/wfmarc_sys/oracle/availabilityreports/prod/dailyhealth_dba/script/linux/run_lsnr_size.sh .
+
+--------------------- solaris-----------
+
+scp -r oracle@dx1411:/wfmarc_sys/oracle/availabilityreports/prod/dailyhealth_dba/script/solaris/run_lsnr_size.sh .
+
+--------------------- AIX-----------
+
+scp -r oracle@dx1411:/wfmarc_sys/oracle/availabilityreports/prod/dailyhealth_dba/script/aix/run_lsnr_size.sh .
+
+
+3)========================= permission ==============
+
+chmod 755 *.sh
+
+
+1)========================= create directory ==============
+
+pwd
+
+sqlplus RMAN_MNTR_USER/rm4n_mntr_us3r
+
+create directory dfchkdir as '/tbmwprd_sys/oracle/dba/monitor';
+
+
+4)========================= create table ==============
+
+conn RMAN_MNTR_USER/rm4n_mntr_us3r
+
+--------------- for SOLARIS / LINUX / HP-UX / AIX --------------------------
+CREATE TABLE df
+ (
+   "FILESYSTEM" VARCHAR2(100),
+   "BLOCKS" VARCHAR2(100),
+   "USED" VARCHAR2(100),
+   "AVAILABLE" VARCHAR2(100),
+   "CAPACITY" VARCHAR2(100),
+   "MOUNT" VARCHAR2(100)
+ )
+ ORGANIZATION external
+ (
+   TYPE oracle_loader
+   DEFAULT DIRECTORY dfchkdir
+   ACCESS PARAMETERS
+   (
+     RECORDS DELIMITED BY NEWLINE CHARACTERSET US7ASCII
+         preprocessor  dfchkdir:'run_df.sh'
+     READSIZE 1048576
+     SKIP 1
+     NOLOGFILE
+     FIELDS TERMINATED BY WHITESPACE LDRTRIM
+     REJECT ROWS WITH ALL NULL FIELDS
+     (
+       "FILESYSTEM" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "BLOCKS" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "USED" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "AVAILABLE" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "CAPACITY" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "MOUNT" CHAR(255)
+         TERMINATED BY WHITESPACE
+     )
+   )
+   location
+   (
+     dfchkdir:'run_df.sh'
+   )
+ )
+ /
+
+
+CREATE TABLE df_lsnr
+ (
+   "NAME" VARCHAR2(100),
+   "TRACE_SIZE" VARCHAR2(100),
+   "TRACE_TYPE" VARCHAR2(100),
+   "PATH" VARCHAR2(200)
+ )
+ ORGANIZATION external
+ (
+   TYPE oracle_loader
+   DEFAULT DIRECTORY dfchkdir
+   ACCESS PARAMETERS
+   (
+     RECORDS DELIMITED BY NEWLINE CHARACTERSET US7ASCII
+         preprocessor  dfchkdir:'run_lsnr_size.sh'
+     READSIZE 1048576
+     NOLOGFILE
+     FIELDS TERMINATED BY WHITESPACE LDRTRIM
+     REJECT ROWS WITH ALL NULL FIELDS
+     (
+       "NAME" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "TRACE_SIZE" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "TRACE_TYPE" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "PATH" CHAR(255)
+         TERMINATED BY WHITESPACE
+     )
+   )
+   location
+   (
+     dfchkdir:'run_lsnr_size.sh'
+   )
+ )
+ /
+
+
+========= ensure that below queries are working.
+
+
+---- to check the filesystem size
+sqlplus RMAN_MNTR_USER/rm4n_mntr_us3r
+set pages 1000 lines 200
+
+select * from RMAN_MNTR_USER.df;
+
+---- to check the alertlog/listner trc size
+select * from RMAN_MNTR_USER.df_lsnr;
+
+
+
+============================== for standby 
+
+cd dba
+mkdir monitor
+cd monitor
+
+----- > Run below in production 
+sqlplus RMAN_MNTR_USER/rm4n_mntr_us3r
+ create directory dfchkdir_sby as '/ivrdbsby_sys/oracle/dba/monitor';
+
+
+
+CREATE TABLE df_sby
+ (
+   "FILESYSTEM" VARCHAR2(100),
+   "BLOCKS" VARCHAR2(30),
+   "USED" VARCHAR2(30),
+   "AVAILABLE" VARCHAR2(30),
+   "CAPACITY" VARCHAR2(30),
+   "MOUNT" VARCHAR2(100)
+ )
+ ORGANIZATION external
+ (
+   TYPE oracle_loader
+   DEFAULT DIRECTORY dfchkdir_sby
+   ACCESS PARAMETERS
+   (
+     RECORDS DELIMITED BY NEWLINE CHARACTERSET US7ASCII
+         preprocessor  dfchkdir_sby:'run_df.sh'
+     READSIZE 1048576
+	 NOLOGFILE
+     SKIP 1
+     FIELDS TERMINATED BY WHITESPACE LDRTRIM
+     REJECT ROWS WITH ALL NULL FIELDS
+     (
+       "FILESYSTEM" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "BLOCKS" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "USED" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "AVAILABLE" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "CAPACITY" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "MOUNT" CHAR(255)
+         TERMINATED BY WHITESPACE
+     )
+   )
+   location
+   (
+     dfchkdir_sby:'run_df.sh'
+   )
+ )
+ /
+
+
+============================== for DR ( some servers like bscs have 3 standby )
+
+sqlplus RMAN_MNTR_USER/rm4n_mntr_us3r
+ create directory dfchkdir_dr as '/bscsdr_sys/oracle/dba/monitor';
+
+
+
+CREATE TABLE df_dr
+ (
+   "FILESYSTEM" VARCHAR2(100),
+   "BLOCKS" VARCHAR2(30),
+   "USED" VARCHAR2(30),
+   "AVAILABLE" VARCHAR2(30),
+   "CAPACITY" VARCHAR2(30),
+   "MOUNT" VARCHAR2(100)
+ )
+ ORGANIZATION external
+ (
+   TYPE oracle_loader
+   DEFAULT DIRECTORY dfchkdir_dr
+   ACCESS PARAMETERS
+   (
+     RECORDS DELIMITED BY NEWLINE CHARACTERSET US7ASCII
+         preprocessor  dfchkdir_dr:'run_df.sh'
+     READSIZE 1048576
+	 NOLOGFILE
+     SKIP 1
+     FIELDS TERMINATED BY WHITESPACE LDRTRIM
+     REJECT ROWS WITH ALL NULL FIELDS
+     (
+       "FILESYSTEM" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "BLOCKS" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "USED" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "AVAILABLE" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "CAPACITY" CHAR(255)
+         TERMINATED BY WHITESPACE,
+       "MOUNT" CHAR(255)
+         TERMINATED BY WHITESPACE
+     )
+   )
+   location
+   (
+     dfchkdir_dr:'run_df.sh'
+   )
+ )
+ /
+
+
+
+
+======================= adhoc
+
+--------------------- linux--------------------------------------------------------------------------------------------------------------
+
+#/bin/bash
+LSNR_NAME=$(/bin/ps -eaf|/bin/grep tnslsnr|/bin/grep -v grep|/bin/awk '{print $9}')
+ORACLE_HOME=$(/bin/ps -ef|/bin/grep tnslsnr|/bin/grep -v grep|/bin/awk '{print substr($8,1,length($8)-12)}'|/usr/bin/tail -1)
+export ORACLE_HOME
+export PATH=$ORACLE_HOME/bin:$PATH
+for a1 in $LSNR_NAME
+do
+LSNR_DIR=$($ORACLE_HOME/bin/lsnrctl status $a1|/bin/grep 'Listener Log File'|/bin/awk '{print $4}'|/bin/awk '{print substr($0,1,length($0)-8)}')
+cd $LSNR_DIR/../trace
+LSNR_SIZE=$(/bin/ls  -l *.log |/bin/awk '{print $5}')
+echo $a1 $LSNR_SIZE "LISTENER" $LSNR_DIR
+done
+
+## get oracle sid
+############### for Oracle home ( linux)  ##############
+
+GET_SID=$(/bin/ps -ef|/bin/grep pmon|/bin/grep -v /bin/sed|/bin/grep -v /bin/grep|/bin/awk '{print $8}'|/bin/grep ora_|/bin/sed 's/ora_pmon_//')
+for b1 in $GET_SID
+do
+vcut_last=$(/bin/echo $b1|/bin/sed -e 's/.*\(.\)$/\1/')
+vcut_sid=$(/bin/echo $b1|/bin/sed 's/.$//')
+#if [ $vcut_last -eq 2 ] ; then export ORACLE_SID=$vcut_sid
+#elif [ $vcut_last -eq 1 ] ; then export ORACLE_SID=$vcut_sid
+#else export ORACLE_SID=$b1
+#fi
+export ORACLE_SID=$b1
+ORACLE_HOME=$(/bin/cat /etc/oratab |/bin/egrep -v '(^#|^\*|^\+|^LISTENER)' |/bin/grep \: | /bin/grep $vcut_sid | /bin/awk -F\: '{print $2}')
+export ORACLE_HOME
+INPUT_VIEW=v\$diag_info
+ALERT_DIR=`$ORACLE_HOME/bin/sqlplus -SILENT / as sysdba <<EOF
+set HEA off
+set feedback off
+set pagesize 0
+set verify off
+set lines 2000
+select value from $INPUT_VIEW where name='Diag Trace';
+quit
+EOF`
+cd $ALERT_DIR
+DB_ALERT_SIZE=$(/bin/ls -l alert_*.log |/bin/awk '{print $5}')
+/bin/echo $ORACLE_SID $DB_ALERT_SIZE "ALERTLOG" $ALERT_DIR
+done
+## get oracle sid
+############### for ASM home ( linux)  ##############
+
+GET_ASM_SID=$(/bin/ps -ef|/bin/grep pmon|/bin/grep -v /bin/sed|/bin/grep -v /bin/grep|/bin/awk '{print $8}'|/bin/grep asm_|/bin/sed 's/asm_pmon_//')
+for c1 in $GET_ASM_SID
+do
+export ORACLE_SID=$c1
+ORACLE_HOME=$(/bin/cat /etc/oratab |/bin/egrep -v '(^#|^\*|^\|^LISTENER)' |/bin/grep \: | /bin/grep $c1 | /bin/awk -F\: '{print $2}')
+export ORACLE_HOME
+INPUT_VIEW=v\$diag_info
+
+ALERT_ASM_DIR=`$ORACLE_HOME/bin/sqlplus -SILENT / as sysasm <<EOF
+set HEA off
+set feedback off
+set pagesize 0
+set verify off
+set lines 2000
+select value from $INPUT_VIEW where name='Diag Trace';
+quit
+EOF`
+cd $ALERT_ASM_DIR
+ASM_ALERT_SIZE=$(/bin/ls -l alert_*.log |/bin/awk '{print $5}')
+/bin/echo $ORACLE_SID $ASM_ALERT_SIZE "ALERTLOG" $ALERT_ASM_DIR
+done
+
+
+
+------------------------------------------- SOLARIS -------------------------------------------------------
+
+
+############### for listener ( solaris)  ##############
+#/bin/bash
+LSNR_NAME=$(/bin/ps -eaf|/bin/grep tnslsnr|/bin/grep -v grep|/bin/awk '{print $10}')
+ORACLE_HOME=$(/bin/ps -ef|/bin/grep tnslsnr|/bin/grep -v grep|/bin/awk '{print substr($9,1,length($9)-12)}'|/bin/tail -1)
+export ORACLE_HOME
+export PATH=$ORACLE_HOME/bin:$PATH
+for a1 in $LSNR_NAME
+do
+LSNR_DIR=$($ORACLE_HOME/bin/lsnrctl status $a1|/bin/grep 'Listener Log File'|/bin/awk '{print $4}'|/bin/awk '{print substr($0,1,length($0)-8)}')
+cd $LSNR_DIR/../trace
+LSNR_SIZE=$(/bin/ls  -l *listener*.log |/bin/awk '{print $5}')
+echo $a1 $LSNR_SIZE $LSNR_DIR
+done
+
+## get oracle sid
+############### for Oracle home ( solaris)  ##############
+
+GET_SID=$(/usr/bin/ps -ef|/usr/bin/grep pmon|/usr/bin/grep -v /usr/bin/sed|/usr/bin/grep -v /usr/bin/grep|/usr/bin/awk '{print $9}'|/usr/bin/grep ora_|/usr/bin/sed 's/ora_pmon_//')
+for b1 in $GET_SID
+do
+vcut_last=$(/usr/bin/echo $b1|/usr/bin/sed -e 's/.*\(.\)$/\1/')
+vcut_sid=$(/usr/bin/echo $b1|/usr/bin/sed 's/.$//')
+#if [ $vcut_last -eq 2 ] ; then export ORACLE_SID=$vcut_sid
+#elif [ $vcut_last -eq 1 ] ; then export ORACLE_SID=$vcut_sid
+#else export ORACLE_SID=$b1
+#fi
+export ORACLE_SID=$b1
+ORACLE_HOME=$(/usr/bin/cat /var/opt/oracle/oratab |/usr/bin/egrep -v '(^#|^\*|^\+|^LISTENER)' |/usr/bin/grep \: | /usr/bin/grep $vcut_sid | /usr/bin/awk -F\: '{print $2}')
+export ORACLE_HOME
+INPUT_VIEW=v\$diag_info
+ALERT_DIR=`$ORACLE_HOME/bin/sqlplus -SILENT / as sysdba <<EOF 
+set HEA off
+set feedback off
+set pagesize 0
+set verify off
+set lines 2000
+select value from $INPUT_VIEW where name='Diag Trace';
+quit
+EOF`
+cd $ALERT_DIR
+DB_ALERT_SIZE=$(ls -l alert_*.log |/usr/bin/awk '{print $5}')
+/usr/bin/echo $ORACLE_SID $DB_ALERT_SIZE $ALERT_DIR
+done
+## get oracle sid
+############### for ASM home ( solaris)  ##############
+
+GET_ASM_SID=$(/usr/bin/ps -ef|/usr/bin/grep pmon|/usr/bin/grep -v /usr/bin/sed|/usr/bin/grep -v /usr/bin/grep|/usr/bin/awk '{print $9}'|/usr/bin/grep asm_|/usr/bin/sed 's/asm_pmon_//')
+for c1 in $GET_ASM_SID
+do
+export ORACLE_SID=$c1
+ORACLE_HOME=$(/usr/bin/cat /var/opt/oracle/oratab |/usr/bin/egrep -v '(^#|^\*|^\|^LISTENER)' |/usr/bin/grep \: | /usr/bin/grep $c1 | /usr/bin/awk -F\: '{print $2}')
+export ORACLE_HOME
+INPUT_VIEW=v\$diag_info
+
+ALERT_ASM_DIR=`$ORACLE_HOME/bin/sqlplus -SILENT / as sysasm <<EOF 
+set HEA off
+set feedback off
+set pagesize 0
+set verify off
+set lines 2000
+select value from $INPUT_VIEW where name='Diag Trace';
+quit
+EOF`
+cd $ALERT_ASM_DIR
+ASM_ALERT_SIZE=$(ls -l alert_*.log |/usr/bin/awk '{print $5}')
+/usr/bin/echo $ORACLE_SID $ASM_ALERT_SIZE $ALERT_ASM_DIR
+done
+
+
+
+
+################ adhoc (SunOS)
+
+#/bin/bash
+/bin/df -h /pms* | /usr/bin/awk '{first = $1; $1 = "filesystem"; print $0}'
