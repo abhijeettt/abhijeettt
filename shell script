@@ -1,0 +1,42 @@
+#!/bin/ksh
+export ORACLE_HOME=/wfmarc_base/app/ora9i
+export PATH=$ORACLE_HOME/bin:$PATH
+export TNS_ADMIN=$ORACLE_HOME/network/admin
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib
+cd /wfmarc_sys/oracle/dba/bin/justin/
+echo "Starting script at "`date ` >> /wfmarc_sys/oracle/dba/bin/justin/log/opscount.log
+echo " " >> /wfmarc_sys/oracle/dba/bin/justin/log/opscount.log
+for line in $(cat mydblist_new)
+do
+#db=$(echo $line | cut -d ':' -f 1)
+#host=$(echo $line | cut -d ':' -f 2)
+#tns=$(echo $line | cut -d ':' -f 3 )
+sqlplus -S RMAN_MNTR_USER/password@$line @/wfmarc_sys/oracle/dba/bin/justin/cntlongsops.sql
+x=$(tail -2 /wfmarc_sys/oracle/dba/bin/justin/log/longops.log |awk '{print $1}'|sed 's/,//')
+echo "Number of longops in $line database is $x" >> /wfmarc_sys/oracle/dba/bin/justin/log/opscount.log
+
+if [[ x -ge 10 ]]
+then
+echo "Long Ops are more than $x, please check." > /wfmarc_sys/oracle/dba/bin/justin/log/email.log
+#mailx -s "Check Longs Ops in $line Database" aaaa@etisalat.ae</wfmarc_sys/oracle/dba/bin/justin/log/email.log
+#mailx -s "Check Longs Ops in $line Database" aaa@etisalat.ae</wfmarc_sys/oracle/dba/bin/justin/log/email.log
+MAILFROM="longops_dtls@etisalat.ae"
+MAILTO="CIT-DBA-ORACLE@etisalat.ae" ## you can put multiple emails separated by comma.
+#MAILTO="citdba@etisalat.ae" ## you can put multiple emails separated by comma.
+#MAILTO="citdba@etisalat.ae,ahaleemah@etisalat.ae" ## you can put multiple emails separated by comma.
+#MAILTO="aaa@etisalat.ae" ## you can put multiple emails separated by comma.
+#MAILTO="juparambil@etisalat.ae,skagupta@etisalat.ae,lkalita@etisalat.ae,vshaikh@etisalat.ae,inkumar@etisalat.ae,anaaboobacker@etisalat.ae" ## you can put multiple emails separated by comma.
+SUBJECT="Check longops in $line Database : $(date +"%d-%b-%Y  %H:%M:%S") "
+cat - /wfmarc_sys/oracle/dba/bin/justin/log/email.log <<EOF | /usr/sbin/sendmail -oi -t
+From: ${MAILFROM}
+To: ${MAILTO}
+Subject: $SUBJECT
+Content-Type: text/html; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+EOF
+fi
+done
+echo " " >> /wfmarc_sys/oracle/dba/bin/justin/log/opscount.log
+echo "Ending script at "`date` >> /wfmarc_sys/oracle/dba/bin/justin/log/opscount.log
+echo " " >> /wfmarc_sys/oracle/dba/bin/justin/log/opscount.log
